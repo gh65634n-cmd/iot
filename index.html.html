@@ -1,0 +1,1001 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Guardian Bag – 몰카 & 추적 방지 IoT</title>
+
+  <!-- 폰트 & 아이콘 -->
+  <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&family=Noto+Sans+KR:wght@400;500;700&display=swap" rel="stylesheet" />
+  <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet" />
+
+  <!-- TailwindCSS -->
+  <script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+
+  <style>
+    body {
+      font-family: 'Roboto','Noto Sans KR',sans-serif;
+      background-color: #f8fafc;
+      min-height: 100vh;
+    }
+
+    .camera-view {
+      position: relative;
+      background: repeating-linear-gradient(
+        45deg,
+        #e5e7eb,
+        #e5e7eb 10px,
+        #f9fafb 10px,
+        #f9fafb 20px
+      );
+      overflow: hidden;
+    }
+
+    .camera-overlay-alert {
+      position: absolute;
+      inset: 0;
+      border: 3px solid rgba(239, 68, 68, 0.9);
+      box-shadow: 0 0 20px rgba(239, 68, 68, 0.7);
+      pointer-events: none;
+      opacity: 0;
+      transition: opacity 0.25s ease-out;
+    }
+    .camera-overlay-alert.show {
+      opacity: 1;
+    }
+
+    .toggle-track {
+      transition: background-color 0.2s ease;
+    }
+    .toggle-thumb {
+      transition: transform 0.2s ease;
+    }
+
+    .risk-pill-low {
+      background-color: #bbf7d0;
+      color: #166534;
+    }
+    .risk-pill-mid {
+      background-color: #fee2e2;
+      color: #b91c1c;
+    }
+    .risk-pill-high {
+      background-color: #fecaca;
+      color: #b91c1c;
+      font-weight: 600;
+    }
+  </style>
+</head>
+<body class="flex flex-col min-h-screen">
+
+  <!-- 상단바 -->
+  <header class="flex items-center px-4 py-3 bg-white border-b shadow-sm sticky top-0 z-30">
+    <button id="open-sidebar" class="text-2xl mr-2 md:hidden">
+      <span class="material-icons">menu</span>
+    </button>
+    <h1 id="page-title" class="text-lg font-semibold text-gray-800">
+      Guardian Bag
+    </h1>
+    <span class="ml-3 inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium bg-emerald-50 text-emerald-700">
+      <span class="w-2 h-2 rounded-full bg-emerald-500 mr-1"></span>
+      센서 연결 완료
+    </span>
+    <div class="ml-auto flex items-center space-x-2">
+      <span class="hidden sm:inline text-xs text-gray-500 mr-2">프로토타입 UI</span>
+      <button id="quick-test-btn" class="hidden sm:inline-flex items-center px-2.5 py-1.5 rounded-full text-xs font-medium bg-blue-600 text-white hover:bg-blue-700">
+        <span class="material-icons text-sm mr-1">bolt</span>
+        랜덤 테스트
+      </button>
+    </div>
+  </header>
+
+  <!-- 모바일 사이드바 -->
+  <aside
+    id="sidebar"
+    class="fixed inset-y-0 left-0 w-64 p-6 bg-slate-900 text-white transform -translate-x-full transition-transform duration-300 ease-in-out z-40 md:hidden"
+  >
+    <div class="flex justify-between items-center mb-6">
+      <h2 class="text-xl font-bold">Guardian Bag</h2>
+      <button id="close-sidebar" class="text-gray-400 hover:text-white">
+        <span class="material-icons">close</span>
+      </button>
+    </div>
+    <nav>
+      <ul class="space-y-4">
+        <li>
+          <button data-target="dashboard" class="menu-link flex items-center w-full text-left hover:text-blue-300">
+            <span class="material-icons mr-3">shield</span> 대시보드
+          </button>
+        </li>
+        <li>
+          <button data-target="alerts" class="menu-link flex items-center w-full text-left hover:text-blue-300">
+            <span class="material-icons mr-3">notifications</span> 알림
+          </button>
+        </li>
+        <li>
+          <button data-target="recordings" class="menu-link flex items-center w-full text-left hover:text-blue-300">
+            <span class="material-icons mr-3">videocam</span> 위험감지 녹화
+          </button>
+        </li>
+        <li>
+          <button data-target="settings" class="menu-link flex items-center w-full text-left hover:text-blue-300">
+            <span class="material-icons mr-3">settings</span> 설정
+          </button>
+        </li>
+      </ul>
+    </nav>
+  </aside>
+
+  <!-- 메인 -->
+  <main class="flex-grow overflow-auto">
+
+    <!-- 대시보드 -->
+    <section id="dashboard" class="px-4 py-5 space-y-5">
+      <div class="bg-white rounded-2xl shadow-sm p-4 border border-slate-100">
+        <div class="flex items-center justify-between mb-3">
+          <div>
+            <h2 class="text-base font-semibold text-gray-800">실시간 보호 상태</h2>
+            <p class="text-xs text-gray-500 mt-0.5">
+              가방에 부착된 센서 데이터를 기반으로 위험도를 가상 시뮬레이션합니다.
+            </p>
+          </div>
+          <div id="status-pill" class="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium bg-emerald-100 text-emerald-700">
+            <span class="w-2 h-2 rounded-full bg-emerald-500 mr-1"></span>
+            안전
+          </div>
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-4 items-stretch">
+          <!-- 카메라 뷰 -->
+          <div class="md:col-span-2">
+            <div class="camera-view rounded-xl h-40 md:h-48 border border-dashed border-slate-300 flex items-center justify-center relative">
+              <div class="text-center text-xs text-gray-500 px-4">
+                <p class="font-medium mb-1">가상 카메라 뷰</p>
+                <p>실제 프로토타입에서는 이 영역에 후방 광각 카메라 영상이 표시됩니다.</p>
+                <p class="mt-1 text-[11px] text-gray-400">
+                  아래 테스트 버튼을 눌러 몰카/추적 감지 시 화면 반응을 확인해보세요.
+                </p>
+              </div>
+              <div id="camera-overlay" class="camera-overlay-alert"></div>
+            </div>
+          </div>
+
+          <!-- 요약 -->
+          <div class="flex flex-col space-y-3">
+            <div class="bg-slate-50 rounded-xl p-3">
+              <div class="text-xs text-gray-500 mb-1">현재 추정 위험도</div>
+              <div class="flex items-end justify-between">
+                <div>
+                  <div id="risk-score" class="text-3xl font-semibold text-slate-800">5</div>
+                  <div class="text-[11px] text-gray-400">0 (안전) ~ 100 (매우 위험)</div>
+                </div>
+                <div id="risk-label" class="text-xs px-2 py-1 rounded-full risk-pill-low">
+                  낮음
+                </div>
+              </div>
+            </div>
+
+            <div class="bg-slate-50 rounded-xl p-3">
+              <div class="flex items-center justify-between mb-1">
+                <span class="text-xs text-gray-500">오늘 감지된 이벤트</span>
+                <button class="text-[11px] text-blue-600 hover:underline" onclick="scrollToAlerts()">
+                  전체 보기
+                </button>
+              </div>
+              <div class="flex items-center justify-between text-xs">
+                <div class="flex flex-col">
+                  <span class="text-gray-500 mb-0.5">몰카 의심</span>
+                  <span id="count-camera" class="font-semibold text-red-500 text-sm">0</span>
+                </div>
+                <div class="flex flex-col">
+                  <span class="text-gray-500 mb-0.5">추적 의심</span>
+                  <span id="count-follower" class="font-semibold text-orange-500 text-sm">0</span>
+                </div>
+                <div class="flex flex-col">
+                  <span class="text-gray-500 mb-0.5">전체</span>
+                  <span id="count-total" class="font-semibold text-slate-700 text-sm">0</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 버튼 -->
+        <div class="mt-4 flex flex-col sm:flex-row gap-2">
+          <button
+            id="btn-test-camera"
+            class="flex-1 inline-flex items-center justify-center px-3 py-2 rounded-full text-sm font-medium bg-red-500 text-white hover:bg-red-600"
+          >
+            <span class="material-icons text-base mr-1.5">photo_camera</span>
+            몰카 감지 테스트
+          </button>
+          <button
+            id="btn-test-follower"
+            class="flex-1 inline-flex items-center justify-center px-3 py-2 rounded-full text-sm font-medium bg-orange-500 text-white hover:bg-orange-600"
+          >
+            <span class="material-icons text-base mr-1.5">follow_the_signs</span>
+            추적자 감지 테스트
+          </button>
+        </div>
+      </div>
+
+      <!-- 최근 알림 -->
+      <div class="bg-white rounded-2xl shadow-sm p-4 border border-slate-100">
+        <div class="flex items-center justify-between mb-3">
+          <h2 class="text-base font-semibold text-gray-800">최근 알림</h2>
+          <button
+            class="text-xs text-blue-600 hover:underline"
+            onclick="scrollToAlerts()"
+          >
+            알림 탭으로 이동
+          </button>
+        </div>
+        <ul id="recent-alerts" class="space-y-2 text-sm text-gray-700">
+          <li class="text-xs text-gray-400">
+            아직 감지된 이벤트가 없습니다. 위 테스트 버튼을 눌러 시뮬레이션을 시작해보세요.
+          </li>
+        </ul>
+      </div>
+    </section>
+
+    <!-- 알림 -->
+    <section id="alerts" class="hidden px-4 py-5 space-y-4 bg-slate-50">
+      <div class="flex items-center justify-between mb-2">
+        <h2 class="text-base font-semibold text-gray-800">알림 로그</h2>
+        <button
+          id="btn-clear-alerts"
+          class="text-xs text-gray-500 hover:text-red-600 inline-flex items-center"
+        >
+          <span class="material-icons text-sm mr-1">delete_sweep</span>
+          전체 지우기
+        </button>
+      </div>
+
+      <p class="text-xs text-gray-500 mb-3">
+        실제 서비스에서는 여기서 각 이벤트를 눌러 상세 화면(지도, CCTV 위치, 신고 버튼 등)으로 진입할 수 있습니다.
+      </p>
+
+      <ul id="alert-list" class="space-y-3">
+        <!-- JS에서 동적으로 채움 -->
+      </ul>
+    </section>
+
+    <!-- 위험감지 녹화 -->
+    <section id="recordings" class="hidden px-4 py-5 space-y-4 bg-slate-50">
+      <div class="flex items-center justify-between mb-2">
+        <h2 class="text-base font-semibold text-gray-800">위험감지 녹화</h2>
+      </div>
+
+      <p class="text-xs text-gray-500">
+        실제 앱에서는 위험도가 높은 이벤트 발생 시 자동으로 짧은 영상을 녹화하고 이 화면에서 재생·다운로드할 수 있습니다.
+        지금은 <span class="font-semibold">가상 녹화 리스트 + 재생/권한 요청 버튼</span>만 구현해 두었습니다.
+      </p>
+
+      <!-- 플레이어 -->
+      <div class="bg-white rounded-2xl shadow-sm p-4 border border-slate-100">
+        <div class="mb-2 flex items-center justify-between">
+          <div>
+            <div class="text-sm font-semibold text-gray-800">가상 녹화 플레이어</div>
+            <div class="text-[11px] text-gray-500 mt-0.5" id="player-info">
+              현재 선택된 녹화가 없습니다. 아래 리스트에서 녹화를 선택 후 [재생]을 눌러보세요.
+            </div>
+          </div>
+        </div>
+        <div class="rounded-xl border border-dashed border-slate-300 h-36 flex items-center justify-center bg-slate-50">
+          <div class="text-center text-xs text-gray-500 px-4">
+            <p class="font-medium mb-1">영상 미리보기 (가상)</p>
+            <p id="player-preview-text">
+              실제 구현 시에는 여기에서 녹화된 위험 상황 영상이 재생됩니다.
+            </p>
+          </div>
+        </div>
+        <div class="mt-3 flex flex-col sm:flex-row gap-2">
+          <button
+            id="btn-request-download"
+            class="flex-1 inline-flex items-center justify-center px-3 py-2 rounded-full text-xs font-medium bg-slate-900 text-white hover:bg-black"
+          >
+            <span class="material-icons text-sm mr-1.5">download</span>
+            녹화 다운로드 권한 요청 (가상)
+          </button>
+          <button
+            id="btn-sim-recording"
+            class="flex-1 inline-flex items-center justify-center px-3 py-2 rounded-full text-xs font-medium bg-blue-600 text-white hover:bg-blue-700"
+          >
+            <span class="material-icons text-sm mr-1.5">fiber_manual_record</span>
+            테스트용 녹화 생성
+          </button>
+        </div>
+      </div>
+
+      <!-- 녹화 리스트 -->
+      <div class="bg-white rounded-2xl shadow-sm p-4 border border-slate-100">
+        <div class="flex items-center justify-between mb-2">
+          <div class="text-sm font-semibold text-gray-800">저장된 위험감지 녹화</div>
+        </div>
+        <ul id="recording-list" class="space-y-3 text-sm">
+          <li class="text-xs text-gray-400">
+            아직 생성된 녹화가 없습니다. 상단 [테스트용 녹화 생성] 버튼을 눌러보거나,
+            대시보드에서 위험도가 높은 알림을 발생시켜 녹화를 자동 생성해보세요.
+          </li>
+        </ul>
+      </div>
+    </section>
+
+    <!-- 설정 -->
+    <section id="settings" class="hidden px-4 py-5 bg-white min-h-[calc(100vh-120px)]">
+      <div class="max-w-md mx-auto space-y-6">
+        <h2 class="text-lg font-semibold text-gray-800 mb-2">감지 설정</h2>
+
+        <!-- 몰카 감지 -->
+        <div class="flex items-center justify-between bg-slate-50 rounded-2xl px-4 py-3">
+          <div>
+            <div class="text-sm font-medium text-gray-800">몰카(비정상 카메라 각도) 감지</div>
+            <div class="text-[11px] text-gray-500 mt-0.5">
+              IR + 카메라 기반으로 상향 촬영 각도 의심 시 알림을 보냅니다. (가상 시뮬레이션)
+            </div>
+          </div>
+          <button id="toggle-camera-alert" class="relative w-11 h-6 rounded-full toggle-track bg-blue-600">
+            <span class="absolute left-1 top-1 w-4 h-4 rounded-full bg-white shadow-md toggle-thumb translate-x-5"></span>
+          </button>
+        </div>
+
+        <!-- 추적 감지 -->
+        <div class="flex items-center justify-between bg-slate-50 rounded-2xl px-4 py-3">
+          <div>
+            <div class="text-sm font-medium text-gray-800">추적(뒤에서 일정 거리 유지) 감지</div>
+            <div class="text-[11px] text-gray-500 mt-0.5">
+              후방 카메라 추적 + 이동 패턴으로 추적 의심 상황을 시뮬레이션합니다.
+            </div>
+          </div>
+          <button id="toggle-follower-alert" class="relative w-11 h-6 rounded-full toggle-track bg-blue-600">
+            <span class="absolute left-1 top-1 w-4 h-4 rounded-full bg-white shadow-md toggle-thumb translate-x-5"></span>
+          </button>
+        </div>
+
+        <!-- 감도 -->
+        <div class="bg-slate-50 rounded-2xl px-4 py-3">
+          <div class="flex items-center justify-between mb-1">
+            <span class="text-sm font-medium text-gray-800">감지 민감도</span>
+            <span id="sensitivity-label" class="text-xs text-gray-500">중간</span>
+          </div>
+          <input
+            id="sensitivity-range"
+            type="range"
+            min="1"
+            max="3"
+            value="2"
+            class="w-full accent-blue-600"
+          />
+          <div class="flex justify-between text-[11px] text-gray-400 mt-1">
+            <span>낮음</span>
+            <span>중간</span>
+            <span>높음</span>
+          </div>
+        </div>
+
+        <!-- 환경 모드 -->
+        <div class="bg-slate-50 rounded-2xl px-4 py-3">
+          <div class="mb-1 text-sm font-medium text-gray-800">환경 모드</div>
+          <select
+            id="env-mode"
+            class="w-full border-gray-300 rounded-xl text-sm focus:ring-blue-500 focus:border-blue-500"
+          >
+            <option value="subway">지하철 모드 (밀집 환경)</option>
+            <option value="street">길거리 모드 (보통 환경)</option>
+            <option value="bus">버스/대중교통 모드</option>
+          </select>
+          <p id="env-desc" class="mt-1 text-[11px] text-gray-500">
+            지하철 모드에서는 추적 감지 기준 시간이 길어지고, 몰카 각도 기준이 좀 더 보수적으로 설정됩니다. (설명용 텍스트)
+          </p>
+        </div>
+
+        <button
+          class="w-full mt-4 py-3 rounded-xl bg-blue-600 text-white text-sm font-semibold hover:bg-blue-700"
+        >
+          설정 값 가상 저장 
+        </button>
+      </div>
+    </section>
+  </main>
+
+  <!-- 하단 탭 -->
+  <nav class="flex justify-around w-full py-2 text-xs border-t bg-white">
+    <button id="tab-dashboard" class="flex flex-col items-center focus:outline-none">
+      <span class="material-icons text-2xl text-blue-600">shield</span>
+      <span class="text-blue-600">대시보드</span>
+    </button>
+    <button id="tab-alerts" class="flex flex-col items-center focus:outline-none">
+      <span class="material-icons text-2xl text-gray-600">notifications</span>
+      <span class="text-gray-600">알림</span>
+    </button>
+    <button id="tab-recordings" class="flex flex-col items-center focus:outline-none">
+      <span class="material-icons text-2xl text-gray-600">videocam</span>
+      <span class="text-gray-600">녹화</span>
+    </button>
+    <button id="tab-settings" class="flex flex-col items-center focus:outline-none">
+      <span class="material-icons text-2xl text-gray-600">settings</span>
+      <span class="text-gray-600">설정</span>
+    </button>
+  </nav>
+
+  <!-- 스크립트 -->
+  <script>
+    // ===== DOM 참조 & 상태 =====
+    const sidebar = document.getElementById("sidebar");
+    const openSidebarBtn = document.getElementById("open-sidebar");
+    const closeSidebarBtn = document.getElementById("close-sidebar");
+    const pageTitle = document.getElementById("page-title");
+
+    const sections = {
+      dashboard: document.getElementById("dashboard"),
+      alerts: document.getElementById("alerts"),
+      recordings: document.getElementById("recordings"),
+      settings: document.getElementById("settings"),
+    };
+
+    const tabButtons = {
+      dashboard: document.getElementById("tab-dashboard"),
+      alerts: document.getElementById("tab-alerts"),
+      recordings: document.getElementById("tab-recordings"),
+      settings: document.getElementById("tab-settings"),
+    };
+
+    const cameraOverlay = document.getElementById("camera-overlay");
+    const riskScoreEl = document.getElementById("risk-score");
+    const riskLabelEl = document.getElementById("risk-label");
+    const statusPill = document.getElementById("status-pill");
+    const countCameraEl = document.getElementById("count-camera");
+    const countFollowerEl = document.getElementById("count-follower");
+    const countTotalEl = document.getElementById("count-total");
+    const recentAlertsEl = document.getElementById("recent-alerts");
+    const alertListEl = document.getElementById("alert-list");
+
+    const recordingListEl = document.getElementById("recording-list");
+    const playerInfoEl = document.getElementById("player-info");
+    const playerPreviewTextEl = document.getElementById("player-preview-text");
+
+    const btnTestCamera = document.getElementById("btn-test-camera");
+    const btnTestFollower = document.getElementById("btn-test-follower");
+    const quickTestBtn = document.getElementById("quick-test-btn");
+    const btnClearAlerts = document.getElementById("btn-clear-alerts");
+    const btnRequestDownload = document.getElementById("btn-request-download");
+    const btnSimRecording = document.getElementById("btn-sim-recording");
+
+    const toggleCameraAlertBtn = document.getElementById("toggle-camera-alert");
+    const toggleFollowerAlertBtn = document.getElementById("toggle-follower-alert");
+    const sensitivityRange = document.getElementById("sensitivity-range");
+    const sensitivityLabel = document.getElementById("sensitivity-label");
+    const envModeSelect = document.getElementById("env-mode");
+    const envDesc = document.getElementById("env-desc");
+
+    let alerts = [];
+    let recordings = [];
+    let selectedRecordingId = null;
+    let downloadPermissionGranted = false;
+    let cameraAlertEnabled = true;
+    let followerAlertEnabled = true;
+    let sensitivity = 2;
+
+    // ===== 탭 & 레이아웃 =====
+    function resetTabs() {
+      Object.values(sections).forEach(sec => sec.classList.add("hidden"));
+      Object.values(tabButtons).forEach(btn => {
+        const icon = btn.querySelector(".material-icons");
+        const label = btn.querySelector("span:nth-child(2)");
+        icon.classList.remove("text-blue-600");
+        icon.classList.add("text-gray-600");
+        label.classList.remove("text-blue-600");
+        label.classList.add("text-gray-600");
+      });
+    }
+
+    function activateTab(key) {
+      resetTabs();
+      sections[key].classList.remove("hidden");
+      const btn = tabButtons[key];
+      const icon = btn.querySelector(".material-icons");
+      const label = btn.querySelector("span:nth-child(2)");
+      icon.classList.remove("text-gray-600");
+      icon.classList.add("text-blue-600");
+      label.classList.remove("text-gray-600");
+      label.classList.add("text-blue-600");
+
+      switch (key) {
+        case "dashboard":
+          pageTitle.textContent = "Guardian Bag";
+          break;
+        case "alerts":
+          pageTitle.textContent = "알림 로그";
+          break;
+        case "recordings":
+          pageTitle.textContent = "위험감지 녹화";
+          break;
+        case "settings":
+          pageTitle.textContent = "감지 설정";
+          break;
+      }
+
+      if (sidebar) {
+        sidebar.classList.add("-translate-x-full");
+        document.body.classList.remove("overflow-hidden");
+      }
+    }
+
+    Object.entries(tabButtons).forEach(([key, btn]) => {
+      btn.addEventListener("click", () => activateTab(key));
+    });
+
+    if (openSidebarBtn) {
+      openSidebarBtn.addEventListener("click", () => {
+        sidebar.classList.remove("-translate-x-full");
+        document.body.classList.add("overflow-hidden");
+      });
+    }
+    if (closeSidebarBtn) {
+      closeSidebarBtn.addEventListener("click", () => {
+        sidebar.classList.add("-translate-x-full");
+        document.body.classList.remove("overflow-hidden");
+      });
+    }
+
+    document.querySelectorAll(".menu-link").forEach(btn => {
+      btn.addEventListener("click", () => {
+        const target = btn.getAttribute("data-target");
+        if (sections[target]) activateTab(target);
+      });
+    });
+
+    // ===== 유틸 =====
+    function formatTime(date) {
+      return date.toLocaleTimeString("ko-KR", {
+        hour: "2-digit",
+        minute: "2-digit",
+      });
+    }
+
+    function getRiskPillClass(risk) {
+      if (risk < 40) return "risk-pill-low";
+      if (risk < 70) return "risk-pill-mid";
+      return "risk-pill-high";
+    }
+
+    function getRiskText(risk) {
+      if (risk < 40) return "낮음";
+      if (risk < 70) return "중간";
+      return "높음";
+    }
+
+    function updateStatusByRisk(risk) {
+      riskScoreEl.textContent = risk;
+      riskLabelEl.textContent = getRiskText(risk);
+      riskLabelEl.className = "text-xs px-2 py-1 rounded-full " + getRiskPillClass(risk);
+
+      if (risk < 40) {
+        statusPill.className =
+          "inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium bg-emerald-100 text-emerald-700";
+        statusPill.innerHTML =
+          '<span class="w-2 h-2 rounded-full bg-emerald-500 mr-1"></span>안전';
+      } else if (risk < 70) {
+        statusPill.className =
+          "inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium bg-amber-100 text-amber-700";
+        statusPill.innerHTML =
+          '<span class="w-2 h-2 rounded-full bg-amber-500 mr-1"></span>주의';
+      } else {
+        statusPill.className =
+          "inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium bg-red-100 text-red-700";
+        statusPill.innerHTML =
+          '<span class="w-2 h-2 rounded-full bg-red-500 mr-1"></span>위험';
+      }
+    }
+
+    function flashCameraOverlay() {
+      cameraOverlay.classList.add("show");
+      setTimeout(() => cameraOverlay.classList.remove("show"), 600);
+    }
+
+    // ===== 알림 & 녹화 =====
+    function maybeCreateRecording(alert) {
+      if (alert.risk < 70) return;
+      const durationSec = 5 + Math.floor(Math.random() * 11); // 5~15초
+      const rec = {
+        id: "rec-" + alert.id,
+        alertType: alert.type,
+        risk: alert.risk,
+        createdAt: alert.time,
+        duration: durationSec,
+      };
+      recordings.unshift(rec);
+      renderRecordingList();
+    }
+
+    function addAlert(type, risk, source) {
+      const now = new Date();
+      const alert = {
+        id: now.getTime().toString(),
+        type,
+        risk,
+        time: now,
+        source,
+      };
+      alerts.unshift(alert);
+      renderAlertCounts();
+      renderAlertList();
+      renderRecentAlerts();
+      flashCameraOverlay();
+      updateStatusByRisk(risk);
+      maybeCreateRecording(alert);
+    }
+
+    function seedAlert(type, risk, source, hour, minute) {
+      const d = new Date();
+      d.setHours(hour, minute, 0, 0);
+      const alert = {
+        id: d.getTime().toString(),
+        type,
+        risk,
+        time: d,
+        source,
+      };
+      alerts.unshift(alert);
+      maybeCreateRecording(alert);
+    }
+
+    function renderAlertCounts() {
+      const cameraCount = alerts.filter(a => a.type === "camera").length;
+      const followerCount = alerts.filter(a => a.type === "follower").length;
+      countCameraEl.textContent = cameraCount;
+      countFollowerEl.textContent = followerCount;
+      countTotalEl.textContent = alerts.length;
+    }
+
+    function renderAlertList() {
+      alertListEl.innerHTML = "";
+      if (alerts.length === 0) {
+        const li = document.createElement("li");
+        li.className = "text-xs text-gray-400";
+        li.textContent = "아직 감지된 이벤트가 없습니다. 대시보드에서 테스트를 실행해보세요.";
+        alertListEl.appendChild(li);
+        return;
+      }
+
+      alerts.forEach(alert => {
+        const li = document.createElement("li");
+        li.className = "bg-white rounded-2xl shadow-sm p-3 flex items-start gap-3 border border-slate-100";
+
+        const iconSpan = document.createElement("span");
+        iconSpan.className =
+          "material-icons text-2xl " +
+          (alert.type === "camera" ? "text-red-500" : "text-orange-500");
+        iconSpan.textContent = alert.type === "camera" ? "photo_camera" : "follow_the_signs";
+
+        const contentDiv = document.createElement("div");
+        contentDiv.className = "flex-1 text-sm";
+
+        const titleDiv = document.createElement("div");
+        titleDiv.className = "flex items-center justify-between mb-1";
+
+        const titleText = document.createElement("div");
+        titleText.className = "font-medium text-gray-800";
+        titleText.textContent =
+          alert.type === "camera" ? "몰카 각도 의심" : "뒤에서 일정 거리 유지 추적 의심";
+
+        const riskBadge = document.createElement("span");
+        riskBadge.className =
+          "inline-flex items-center px-2 py-0.5 rounded-full text-[11px] " +
+          getRiskPillClass(alert.risk);
+        riskBadge.textContent = getRiskText(alert.risk);
+
+        titleDiv.appendChild(titleText);
+        titleDiv.appendChild(riskBadge);
+
+        const metaP = document.createElement("p");
+        metaP.className = "text-[11px] text-gray-500";
+        metaP.textContent =
+          "오늘 " +
+          formatTime(alert.time) +
+          "경 · 가상 알림(" +
+          (alert.source === "manual" ? "테스트" : "시뮬레이션") +
+          ")";
+
+        const descP = document.createElement("p");
+        descP.className = "mt-1 text-xs text-gray-700 leading-snug";
+        if (alert.type === "camera") {
+          descP.textContent =
+            "가방 후방 하단에서 약간 위쪽을 향한 촬영 각도가 일정 시간 이상 유지된 것으로 가정한 시나리오입니다.";
+        } else {
+          descP.textContent =
+            "1~2m 거리에서 동일 인물이 10초 이상 동일 속도로 따라오는 패턴을 감지한 것으로 가정한 시나리오입니다.";
+        }
+
+        contentDiv.appendChild(titleDiv);
+        contentDiv.appendChild(metaP);
+        contentDiv.appendChild(descP);
+
+        li.appendChild(iconSpan);
+        li.appendChild(contentDiv);
+
+        alertListEl.appendChild(li);
+      });
+    }
+
+    function renderRecentAlerts() {
+      recentAlertsEl.innerHTML = "";
+      if (alerts.length === 0) {
+        const li = document.createElement("li");
+        li.className = "text-xs text-gray-400";
+        li.textContent = "아직 감지된 이벤트가 없습니다. 위 테스트 버튼을 눌러 시뮬레이션을 시작해보세요.";
+        recentAlertsEl.appendChild(li);
+        return;
+      }
+
+      alerts.slice(0, 3).forEach(alert => {
+        const li = document.createElement("li");
+        li.className =
+          "flex items-center justify-between bg-slate-50 rounded-xl px-3 py-2 text-xs";
+
+        const leftDiv = document.createElement("div");
+        leftDiv.className = "flex items-center gap-2";
+
+        const iconSpan = document.createElement("span");
+        iconSpan.className =
+          "material-icons text-sm " +
+          (alert.type === "camera" ? "text-red-500" : "text-orange-500");
+        iconSpan.textContent = alert.type === "camera" ? "photo_camera" : "follow_the_signs";
+
+        const textDiv = document.createElement("div");
+        const line1 = document.createElement("div");
+        line1.className = "font-medium text-gray-800";
+        line1.textContent =
+          alert.type === "camera" ? "몰카 각도 의심" : "추적 의심 감지";
+        const line2 = document.createElement("div");
+        line2.className = "text-[11px] text-gray-500";
+        line2.textContent =
+          "오늘 " +
+          formatTime(alert.time) +
+          "경 · 위험도 " +
+          alert.risk +
+          " 이벤트 감지";
+
+        textDiv.appendChild(line1);
+        textDiv.appendChild(line2);
+
+        leftDiv.appendChild(iconSpan);
+        leftDiv.appendChild(textDiv);
+
+        const riskBadge = document.createElement("span");
+        riskBadge.className =
+          "inline-flex items-center px-2 py-0.5 rounded-full text-[11px] " +
+          getRiskPillClass(alert.risk);
+        riskBadge.textContent = getRiskText(alert.risk);
+
+        li.appendChild(leftDiv);
+        li.appendChild(riskBadge);
+
+        recentAlertsEl.appendChild(li);
+      });
+    }
+
+    function renderRecordingList() {
+      recordingListEl.innerHTML = "";
+      if (recordings.length === 0) {
+        const li = document.createElement("li");
+        li.className = "text-xs text-gray-400";
+        li.textContent =
+          "아직 생성된 녹화가 없습니다. 상단 [테스트용 녹화 생성] 버튼을 눌러보거나, 위험도가 높은 알림을 발생시켜 녹화를 자동 생성해보세요.";
+        recordingListEl.appendChild(li);
+        return;
+      }
+
+      recordings.forEach(rec => {
+        const li = document.createElement("li");
+        li.className =
+          "flex items-center justify-between bg-slate-50 rounded-xl px-3 py-2 text-xs";
+
+        const leftDiv = document.createElement("div");
+        leftDiv.className = "flex items-center gap-2";
+
+        const iconSpan = document.createElement("span");
+        iconSpan.className =
+          "material-icons text-base " +
+          (rec.alertType === "camera" ? "text-red-500" : "text-orange-500");
+        iconSpan.textContent = "play_circle_filled";
+
+        const textDiv = document.createElement("div");
+        const line1 = document.createElement("div");
+        line1.className = "font-medium text-gray-800";
+        line1.textContent =
+          (rec.alertType === "camera" ? "[몰카 의심]" : "[추적 의심]") +
+          " 위험도 " + rec.risk + " 녹화";
+        const line2 = document.createElement("div");
+        line2.className = "text-[11px] text-gray-500";
+        line2.textContent =
+          formatTime(rec.createdAt) + " · 약 " + rec.duration + "초 녹화";
+
+        textDiv.appendChild(line1);
+        textDiv.appendChild(line2);
+
+        leftDiv.appendChild(iconSpan);
+        leftDiv.appendChild(textDiv);
+
+        const playBtn = document.createElement("button");
+        playBtn.className =
+          "inline-flex items-center px-2 py-1 rounded-full text-[11px] font-medium bg-blue-600 text-white hover:bg-blue-700";
+        playBtn.innerHTML =
+          '<span class="material-icons text-xs mr-1">play_arrow</span>재생';
+        playBtn.addEventListener("click", () => {
+          selectedRecordingId = rec.id;
+          playerInfoEl.textContent =
+            (rec.alertType === "camera" ? "몰카 의심 상황" : "추적 의심 상황") +
+            "에 대해 약 " + rec.duration + "초간 녹화된 영상(가상)을 재생 중이라고 가정합니다.";
+          playerPreviewTextEl.textContent =
+            "[가상 재생 중] " +
+            formatTime(rec.createdAt) +
+            " 에 기록된 위험 상황을 다시 확인하는 화면입니다.";
+        });
+
+        li.appendChild(leftDiv);
+        li.appendChild(playBtn);
+
+        recordingListEl.appendChild(li);
+      });
+    }
+
+    // ===== 토글, 슬라이더, 모드 =====
+    function updateSwitchVisual(btn, isOn) {
+      const thumb = btn.querySelector(".toggle-thumb");
+      if (isOn) {
+        btn.classList.remove("bg-slate-300");
+        btn.classList.add("bg-blue-600");
+        thumb.classList.add("translate-x-5");
+      } else {
+        btn.classList.remove("bg-blue-600");
+        btn.classList.add("bg-slate-300");
+        thumb.classList.remove("translate-x-5");
+      }
+    }
+
+    updateSwitchVisual(toggleCameraAlertBtn, cameraAlertEnabled);
+    updateSwitchVisual(toggleFollowerAlertBtn, followerAlertEnabled);
+
+    toggleCameraAlertBtn.addEventListener("click", () => {
+      cameraAlertEnabled = !cameraAlertEnabled;
+      updateSwitchVisual(toggleCameraAlertBtn, cameraAlertEnabled);
+    });
+
+    toggleFollowerAlertBtn.addEventListener("click", () => {
+      followerAlertEnabled = !followerAlertEnabled;
+      updateSwitchVisual(toggleFollowerAlertBtn, followerAlertEnabled);
+    });
+
+    sensitivityRange.addEventListener("input", () => {
+      sensitivity = Number(sensitivityRange.value);
+      sensitivityLabel.textContent =
+        sensitivity === 1 ? "낮음" : sensitivity === 2 ? "중간" : "높음";
+    });
+
+    envModeSelect.addEventListener("change", () => {
+      const val = envModeSelect.value;
+      if (val === "subway") {
+        envDesc.textContent =
+          "지하철 모드: 사람 밀도가 높다고 가정하여, 추적 판단 기준 시간은 길게, 몰카 각도 기준은 더 보수적으로 설정합니다.";
+      } else if (val === "street") {
+        envDesc.textContent =
+          "길거리 모드: 일반적인 보행 환경을 가정합니다. 몰카/추적 감지는 기본 민감도로 수행됩니다.";
+      } else {
+        envDesc.textContent =
+          "버스/대중교통 모드: 동일 위치에 오래 서 있는 상황을 고려해 추적 판단 기준이 조정됩니다.";
+      }
+    });
+
+    // ===== 버튼 동작 =====
+    if (btnTestCamera) {
+      btnTestCamera.addEventListener("click", () => {
+        if (!cameraAlertEnabled) return;
+        const base = 60;
+        const noise = Math.floor(Math.random() * 40);
+        const risk = Math.min(100, base + noise);
+        addAlert("camera", risk, "manual");
+      });
+    }
+
+    if (btnTestFollower) {
+      btnTestFollower.addEventListener("click", () => {
+        if (!followerAlertEnabled) return;
+        const base = 55;
+        const noise = Math.floor(Math.random() * 35);
+        const risk = Math.min(100, base + noise);
+        addAlert("follower", risk, "manual");
+      });
+    }
+
+    if (quickTestBtn) {
+      quickTestBtn.addEventListener("click", () => {
+        const type = Math.random() < 0.5 ? "camera" : "follower";
+        const risk = Math.floor(Math.random() * 101);
+        if (type === "camera" && !cameraAlertEnabled) return;
+        if (type === "follower" && !followerAlertEnabled) return;
+        addAlert(type, risk, "manual");
+      });
+    }
+
+    btnClearAlerts.addEventListener("click", () => {
+      alerts = [];
+      recordings = [];
+      selectedRecordingId = null;
+      renderAlertCounts();
+      renderAlertList();
+      renderRecentAlerts();
+      renderRecordingList();
+      playerInfoEl.textContent =
+        "현재 선택된 녹화가 없습니다. 아래 리스트에서 녹화를 선택 후 [재생]을 눌러보세요.";
+      playerPreviewTextEl.textContent =
+        "실제 구현 시에는 여기에서 녹화된 위험 상황 영상이 재생됩니다.";
+    });
+
+    btnRequestDownload.addEventListener("click", () => {
+      if (!downloadPermissionGranted) {
+        downloadPermissionGranted = true;
+        alert("브라우저/OS에 녹화 파일 다운로드 권한을 요청했다고 가정합니다. (가상)");
+        btnRequestDownload.textContent = "다운로드 권한 요청 완료 (가상)";
+      } else {
+        alert("이미 다운로드 권한이 허용된 상태라고 가정합니다. (가상)");
+      }
+    });
+
+    btnSimRecording.addEventListener("click", () => {
+      const now = new Date();
+      const dummyAlert = {
+        id: now.getTime().toString(),
+        type: Math.random() < 0.5 ? "camera" : "follower",
+        risk: 80,
+        time: now,
+        source: "manual",
+      };
+      maybeCreateRecording(dummyAlert);
+    });
+
+    // ===== 자동 시뮬레이션 =====
+    function autoSimulate() {
+      let baseRisk;
+      if (sensitivity === 1) baseRisk = Math.random() * 50;
+      else if (sensitivity === 2) baseRisk = Math.random() * 70;
+      else baseRisk = Math.random() * 100;
+
+      const risk = Math.round(baseRisk);
+      updateStatusByRisk(risk);
+
+      if (risk > 65) {
+        const type = Math.random() < 0.5 ? "camera" : "follower";
+        if (type === "camera" && !cameraAlertEnabled) return;
+        if (type === "follower" && !followerAlertEnabled) return;
+        addAlert(type, risk, "auto");
+      }
+    }
+    setInterval(autoSimulate, 15000);
+
+    // ===== 초기 가상 알림 =====
+    function seedMockAlerts() {
+      seedAlert("camera", 70, "auto", 7, 37);  // 오늘 7:37경 위험도 70
+      seedAlert("follower", 82, "auto", 7, 52);
+      seedAlert("camera", 45, "auto", 8, 10);
+      seedAlert("follower", 65, "auto", 8, 25);
+      renderAlertCounts();
+      renderAlertList();
+      renderRecentAlerts();
+      renderRecordingList();
+      updateStatusByRisk(65);
+    }
+
+    // ===== 초기 진입 =====
+    activateTab("dashboard");
+    seedMockAlerts();
+
+    // 전역에서 호출 가능한 함수
+    function scrollToAlerts() {
+      activateTab("alerts");
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    }
+    window.scrollToAlerts = scrollToAlerts;
+  </script>
+</body>
+</html>
